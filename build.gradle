@@ -1,0 +1,99 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'eu.appsatori:gradle-fatjar-plugin:0.2-rc1'
+    }
+}
+
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'fatjar'
+apply plugin: 'maven'
+
+group = 'net.minecraftforge.lex.fffixer'
+version = '1.0-SNAPSHOT'
+targetCompatibility = '1.6'
+sourceCompatibility = '1.6'
+
+repositories {
+    mavenCentral()
+}
+
+jar {
+    manifest.attributes('Main-Class': 'net.minecraftforge.lex.fffixer.FFFixer')
+}
+fatJar {
+    classifier 'fatjar'
+    manifest.attributes('Main-Class': 'net.minecraftforge.lex.fffixer.FFFixer')
+}
+
+artifacts {
+    archives jar
+    archives fatJar
+}
+
+dependencies {
+    compile 'org.ow2.asm:asm-debug-all:4.1'
+    compile 'net.sf.jopt-simple:jopt-simple:4.5'
+    compile 'com.google.code.gson:gson:2.2.4'
+}
+configurations { deployJars }
+uploadArchives {
+    repositories {
+        add project.repositories.mavenLocal()
+    }
+    repositories.mavenDeployer {
+        configuration = configurations.deployJars
+
+        if (project.hasProperty("filesmaven")) {
+            logger.info('Publishing to files server')
+            repository(url: project.filesmaven.url) {
+                authentication(userName: project.filesmaven.username, privateKey: project.filesmaven.key)
+            }
+        } else {
+            logger.info('Publishing to repo folder')
+            repository(url: 'file://localhost/' + project.file('repo').getAbsolutePath())
+        }
+
+        pom {
+            groupId = project.group
+            version = project.version
+            artifactId = project.archivesBaseName
+        }
+        pom.project {
+            name project.archivesBaseName
+            packaging 'jar'
+            description 'Program that applies various fixes to Fernflower\'s publicly released binary.'
+            url 'https://github.com/LexManos/FFFixer'
+
+            scm {
+                url 'https://github.com/LexManos/FFFixer'
+                connection 'scm:git:git://github.com/LexManos/FFFixer.git'
+                developerConnection 'scm:git:git@github.com:LexManos/FFFixer.git'
+            }
+
+            issueManagement {
+                system 'github'
+                url 'https://github.com/LexManos/FFFixer/issues'
+            }
+
+            licenses {
+                license {
+                    name ''
+                    url ''
+                    distribution 'repo'
+                }
+            }
+
+            developers {
+                developer {
+                    id 'LexManos'
+                    name 'Lex Manos'
+                    roles { role 'developer' }
+                }
+            }
+        }
+    }
+}
