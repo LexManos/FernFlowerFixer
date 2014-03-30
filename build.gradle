@@ -35,9 +35,10 @@ artifacts {
 }
 
 dependencies {
-    compile 'org.ow2.asm:asm-debug-all:4.1'
+    compile 'org.ow2.asm:asm-debug-all:5.0.1'
     compile 'net.sf.jopt-simple:jopt-simple:4.5'
     compile 'com.google.code.gson:gson:2.2.4'
+    compile 'com.google.guava:guava:15.0'
 }
 configurations { deployJars }
 uploadArchives {
