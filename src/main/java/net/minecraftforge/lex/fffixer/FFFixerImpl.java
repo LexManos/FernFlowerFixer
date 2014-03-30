@@ -124,8 +124,7 @@ public class FFFixerImpl
 
             // Add Out Util class:
             String[] extras = {
-                Util.class.getCanonicalName().replace('.', '/') + ".class",
-                Util.class.getCanonicalName().replace('.', '/') + "$1.class"
+                Util.class.getCanonicalName().replace('.', '/') + ".class"
             };
             for (String name : extras)
             {

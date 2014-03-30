@@ -18,7 +18,7 @@ import org.objectweb.asm.tree.VarInsnNode;
  * Thanks to fry for finding this issue and pointing me in the right direction.
  * 
  * Code Injected:
- *   var15 = net.minecraftfroge.lex.fffixer.Util.sortStrings(var15);
+ *   var15 = net.minecraftfroge.lex.fffixer.Util.sortComparable(var15);
  * 
  * @author LexManos
  *
@@ -53,7 +53,7 @@ public class InnerClassOrderFixer implements IClassProcessor
                     VarInsnNode var = (VarInsnNode)insn;
                     InsnList toAdd = new InsnList();
                     toAdd.add(new VarInsnNode (ALOAD, var.var)); // var15 = fixInnerOrder(var15)
-                    toAdd.add(new MethodInsnNode(INVOKESTATIC, Type.getInternalName(Util.class), "sortStrings", "(Ljava/util/Iterator;)Ljava/util/Iterator;", false));
+                    toAdd.add(new MethodInsnNode(INVOKESTATIC, Type.getInternalName(Util.class), "sortComparable", "(Ljava/util/Iterator;)Ljava/util/Iterator;", false));
                     toAdd.add(new VarInsnNode (ASTORE, var.var));
 
                     mtd.instructions.insert(insn, toAdd); // Inject static call
