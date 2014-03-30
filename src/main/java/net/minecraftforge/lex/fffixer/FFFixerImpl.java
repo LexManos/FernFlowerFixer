@@ -20,14 +20,9 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.tree.ClassNode;
-import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
-import org.objectweb.asm.tree.VarInsnNode;
 
 import com.google.common.io.ByteStreams;
-import com.sun.xml.internal.ws.org.objectweb.asm.Type;
-
-import static org.objectweb.asm.Opcodes.*;
 
 public class FFFixerImpl
 {
@@ -38,9 +33,8 @@ public class FFFixerImpl
     {
         processors.add(new InnerClassNPEFixer(this));
         processors.add(new InnerClassOrderFixer(this));
+        processors.add(new VariableNumberFixer(this));
         processors.add(new EnableStackTracesInLog(this));
-        processors.add(new VaribleNumberingFix());
-        processors.add(new VaribleNumberFix(this));
     }
 
     public static void process(String inFile, String outFile, String logFile) throws IOException
@@ -204,36 +198,5 @@ public class FFFixerImpl
                 return method;
         }
         return null;
-    }
-
-    private class VaribleNumberingFix implements IClassProcessor
-    {
-        @Override
-        public void process(ClassNode node)
-        {
-            if (!node.name.equals("bS")) return;
-            MethodNode mtd = FFFixerImpl.getMethod(node, "a", "(I)Ljava/lang/String;");
-            mtd.instructions.insert(new MethodInsnNode(INVOKESTATIC, Type.getInternalName(Util.class), "getName", "(I)V", false));
-            mtd.instructions.insert(new VarInsnNode(ILOAD, 1));
-            //FFFixerImpl.this.setWorkDone();
-            /*Iterator<AbstractInsnNode> itr = mtd.instructions.iterator();
-            while (itr.hasNext())
-            {
-                AbstractInsnNode n = itr.next();
-                if (n instanceof MethodInsnNode)
-                {
-                    MethodInsnNode v = (MethodInsnNode)n;
-                    if (v.getOpcode() == INVOKEVIRTUAL && (v.owner + "/" + v.name + v.desc).equals("java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"))
-                    {
-                        mtd.instructions.set(itr.next(), new InsnNode(NOP));
-                        mtd.instructions.set(n, new MethodInsnNode(INVOKESTATIC, Type.getInternalName(Util.class), "putIntercept", "(Ljava/util/HashMap;Ljava/lang/Integer;Ljava/lang/Integer;)V", false));
-                        FFFixerImpl.log.info("Injecting put shunt");
-                        FFFixerImpl.this.setWorkDone();
-                        return;
-                    }
-                }
-            }
-            */
-        }
     }
 }
