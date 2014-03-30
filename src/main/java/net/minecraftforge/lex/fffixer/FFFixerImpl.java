@@ -9,7 +9,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -20,29 +19,28 @@ import java.util.zip.ZipOutputStream;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
-import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
-import org.objectweb.asm.tree.FieldInsnNode;
-import org.objectweb.asm.tree.InsnList;
-import org.objectweb.asm.tree.InsnNode;
-import org.objectweb.asm.tree.JumpInsnNode;
-import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
-import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
+
+import com.google.common.io.ByteStreams;
+import com.sun.xml.internal.ws.org.objectweb.asm.Type;
 
 import static org.objectweb.asm.Opcodes.*;
 
 public class FFFixerImpl
 {
-    private final static Logger log = Logger.getLogger("FFFixer");
+    final static Logger log = Logger.getLogger("FFFixer");
     private final List<IClassProcessor> processors = new ArrayList<IClassProcessor>();
 
     public FFFixerImpl()
     {
-        processors.add(new InnerClassNPEFixer());
+        processors.add(new InnerClassNPEFixer(this));
         processors.add(new InnerClassOrderFixer(this));
+        processors.add(new EnableStackTracesInLog(this));
+        processors.add(new VaribleNumberingFix());
+        processors.add(new VaribleNumberFix(this));
     }
 
     public static void process(String inFile, String outFile, String logFile) throws IOException
@@ -129,6 +127,18 @@ public class FFFixerImpl
                 outJar.putNextEntry(newEntry);
                 outJar.write(entryData);
             }
+
+            // Add Out Util class:
+            String[] extras = {
+                Util.class.getCanonicalName().replace('.', '/') + ".class",
+                Util.class.getCanonicalName().replace('.', '/') + "$1.class"
+            };
+            for (String name : extras)
+            {
+                ZipEntry newEntry = new ZipEntry(name);
+                outJar.putNextEntry(newEntry);
+                outJar.write(ByteStreams.toByteArray(FFFixerImpl.class.getClassLoader().getResourceAsStream(name)));
+            }
         }
         finally
         {
@@ -173,7 +183,7 @@ public class FFFixerImpl
         
         ClassVisitor ca = cn;
 
-        //ca = new ApplyMapClassAdapter(cn, this);
+        //ca = new LineInjectorAdaptor(ASM4, cn);
         
         cr.accept(ca, 0);
         
@@ -186,188 +196,44 @@ public class FFFixerImpl
         return workDone ? writer.toByteArray() : cls;
     }
 
-    private interface IClassProcessor
+    public static MethodNode getMethod(ClassNode cls, String name, String desc)
     {
-        void process(ClassNode node);
+        for (MethodNode method : cls.methods)
+        {
+            if (method.name.equals(name) && method.desc.equals(desc))
+                return method;
+        }
+        return null;
     }
 
-    /**
-     * Fix an issue in the 'cA' class when decompiling inner classes that causes 
-     * it to error with a NPE by adding the following code to the a(aK, cX, aG) function
-     * directly after the first line:
-     * 
-     *     if ((this == null) || (this.h == null)) {
-     *           return null;
-     *     }
-     * 
-     * @author LexManos, From old research done on StackOverflow and the MCP team ages ago.
-     *
-     */
-    private class InnerClassNPEFixer implements IClassProcessor
+    private class VaribleNumberingFix implements IClassProcessor
     {
         @Override
         public void process(ClassNode node)
         {
-            if (!node.name.equals("cA")) return;
-            MethodNode mtd = null;
-            for (MethodNode m : node.methods)
+            if (!node.name.equals("bS")) return;
+            MethodNode mtd = FFFixerImpl.getMethod(node, "a", "(I)Ljava/lang/String;");
+            mtd.instructions.insert(new MethodInsnNode(INVOKESTATIC, Type.getInternalName(Util.class), "getName", "(I)V", false));
+            mtd.instructions.insert(new VarInsnNode(ILOAD, 1));
+            //FFFixerImpl.this.setWorkDone();
+            /*Iterator<AbstractInsnNode> itr = mtd.instructions.iterator();
+            while (itr.hasNext())
             {
-                if (m.name.equals("a") && m.desc.equals("(LaK;LcX;LaG;)LaJ;"))
+                AbstractInsnNode n = itr.next();
+                if (n instanceof MethodInsnNode)
                 {
-                    mtd = m;
-                    break;
-                }
-            }
-
-            InsnList toAdd = new InsnList();
-            LabelNode ret = new LabelNode();
-            LabelNode end = new LabelNode();
-            toAdd.add(new VarInsnNode (ALOAD, 0));
-            toAdd.add(new JumpInsnNode(IFNULL, ret)); // if (var0 == null)
-            toAdd.add(new VarInsnNode (ALOAD, 0));
-            toAdd.add(new FieldInsnNode(GETFIELD, "aK", "h", "Ljava/util/HashMap;"));
-            toAdd.add(new JumpInsnNode(IFNULL, ret));//    || (var0.h == null)
-            toAdd.add(new JumpInsnNode(GOTO, end));
-            toAdd.add(ret);
-            toAdd.add(new InsnNode(ACONST_NULL));
-            toAdd.add(new InsnNode(ARETURN));        //        return null
-            toAdd.add(end);
-
-            Iterator<AbstractInsnNode> itr = mtd.instructions.iterator();
-            while(itr.hasNext())
-            {
-                AbstractInsnNode insn = itr.next();
-                if (insn instanceof VarInsnNode)
-                {
-                    VarInsnNode v = (VarInsnNode)insn;
-                    if (v.getOpcode() == ASTORE && v.var == 0)
+                    MethodInsnNode v = (MethodInsnNode)n;
+                    if (v.getOpcode() == INVOKEVIRTUAL && (v.owner + "/" + v.name + v.desc).equals("java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"))
                     {
-                        FFFixerImpl.log.info("Injecting InnerClass NPE Fix");
-                        mtd.instructions.insert(insn, toAdd);
+                        mtd.instructions.set(itr.next(), new InsnNode(NOP));
+                        mtd.instructions.set(n, new MethodInsnNode(INVOKESTATIC, Type.getInternalName(Util.class), "putIntercept", "(Ljava/util/HashMap;Ljava/lang/Integer;Ljava/lang/Integer;)V", false));
+                        FFFixerImpl.log.info("Injecting put shunt");
                         FFFixerImpl.this.setWorkDone();
                         return;
-                    }                    
+                    }
                 }
             }
-        }
-    }
-
-    /**
-     * Fixes decompiler differences between JVM versions caused by HashSet's sorting order changing between JVM implementations.
-     * Simple solution is to hijack the Iterator to make it use a properly sorted one.
-     * Thanks to fry for finding this issue and pointing me in the right direction.
-     * 
-     * Code Injected:
-     *   var15 = fixInnerOrder(var15);
-     * 
-     * New Method:
-     * 
-     * public static Iterator<String> fixInnerOrder(Iterator<String> itr)
-     * {
-     *     List<String> list = new ArrayList<String>();
-     *      
-     *     while (itr.hasNext())
-     *         list.add(itr.next());
-     *                
-     *     Collections.sort(list);
-     *     return list.iterator();
-     * }
-     * 
-     * @author LexManos
-     *
-     */
-    private static class InnerClassOrderFixer implements IClassProcessor
-    {
-        private FFFixerImpl inst;
-        private InnerClassOrderFixer(FFFixerImpl inst)
-        {
-            this.inst = inst;
-        }
-
-        @Override
-        public void process(ClassNode node)
-        {
-            if (!node.name.equals("cG")) return;
-            MethodNode mtd = null;
-            for (MethodNode m : node.methods)
-            {
-                if (m.name.equals("<init>") && m.desc.equals("(Li;)V"))
-                {
-                    mtd = m;
-                    break;
-                }
-            }
-
-            InsnList toAdd = new InsnList();
-            toAdd.add(new VarInsnNode (ALOAD, 15)); // var15 = fixInnerOrder(var15)
-            toAdd.add(new MethodInsnNode(INVOKESTATIC, "cG", "fixInnerOrder", "(Ljava/util/Iterator;)Ljava/util/Iterator;"));
-            toAdd.add(new VarInsnNode (ASTORE, 15));
-
-            Iterator<AbstractInsnNode> itr = mtd.instructions.iterator();
-            while(itr.hasNext())
-            {
-                AbstractInsnNode insn = itr.next();
-                if (insn instanceof MethodInsnNode)
-                {
-                    MethodInsnNode v = (MethodInsnNode)insn;
-                    if (v.getOpcode() == INVOKEVIRTUAL && (v.owner + "/" + v.name + v.desc).equals("java/util/HashSet/iterator()Ljava/util/Iterator;"))
-                    {
-                        insn = itr.next(); //Pop off the next which is ASTORE 15
-                        FFFixerImpl.log.info("Injecting InnerClass Order Fix");
-                        mtd.instructions.insert(insn, toAdd); // Inject static call
-
-                        /* Add this function in:
-                           public static Iterator<String> fixInnerOrder(Iterator<String> itr)
-                           {
-                               List<String> list = new ArrayList<String>();
-                           
-                               while (itr.hasNext())
-                                   list.add(itr.next());
-                           
-                               Collections.sort(list);
-                               return list.iterator();
-                           }
-                         */
-                        MethodNode fixer = new MethodNode(ACC_PRIVATE | ACC_STATIC, "fixInnerOrder", "(Ljava/util/Iterator;)Ljava/util/Iterator;", null, null);
-                        LabelNode loop = new LabelNode();
-                        LabelNode body = new LabelNode();
-                        add(fixer.instructions,
-                           new TypeInsnNode(NEW, "java/util/ArrayList"),
-                           new InsnNode(DUP),
-                           new MethodInsnNode(INVOKESPECIAL, "java/util/ArrayList", "<init>", "()V"),
-                           new VarInsnNode(ASTORE, 1),
-                           new JumpInsnNode(GOTO, loop),
-                           body,
-                           new VarInsnNode(ALOAD, 1),
-                           new VarInsnNode(ALOAD, 0),
-                           new MethodInsnNode(INVOKEINTERFACE, "java/util/Iterator", "next", "()Ljava/lang/Object;"),
-                           new TypeInsnNode(CHECKCAST, "java/lang/String"),
-                           new MethodInsnNode(INVOKEINTERFACE, "java/util/List", "add", "(Ljava/lang/Object;)Z"),
-                           new InsnNode(POP),
-                           loop,
-                           new VarInsnNode(ALOAD, 0),
-                           new MethodInsnNode(INVOKEINTERFACE, "java/util/Iterator", "hasNext", "()Z"),
-                           new JumpInsnNode(IFNE, body),
-                           new VarInsnNode(ALOAD, 1),
-                           new MethodInsnNode(INVOKESTATIC, "java/util/Collections", "sort", "(Ljava/util/List;)V"),
-                           new VarInsnNode(ALOAD, 1),
-                           new MethodInsnNode(INVOKEINTERFACE, "java/util/List", "iterator", "()Ljava/util/Iterator;"),
-                           new InsnNode(ARETURN)                           
-                        );
-
-                        node.methods.add(fixer);
-
-                        inst.setWorkDone();
-                        return;
-                    }                    
-                }
-            }
-        }
-
-        private void add(InsnList list, AbstractInsnNode... insns)
-        {
-            for (AbstractInsnNode n : insns)
-                list.add(n);
+            */
         }
     }
 }
