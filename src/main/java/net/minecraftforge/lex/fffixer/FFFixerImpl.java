@@ -21,6 +21,7 @@ import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.Type;
 
 import com.google.common.io.ByteStreams;
 
@@ -124,7 +125,9 @@ public class FFFixerImpl
 
             // Add Out Util class:
             String[] extras = {
-                Util.class.getCanonicalName().replace('.', '/') + ".class"
+                Type.getInternalName(Util.class) + ".class",
+                Type.getInternalName(Util.class) + "$1.class",
+                Type.getInternalName(Util.Indexed.class) + ".class"
             };
             for (String name : extras)
             {
