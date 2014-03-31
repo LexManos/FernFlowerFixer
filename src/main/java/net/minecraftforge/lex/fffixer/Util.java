@@ -25,12 +25,10 @@ public class Util
             @Override
             public int compare(Object o1, Object o2)
             {
-                if(o1 instanceof Indexed) {
-                    if(o2 instanceof Indexed)
-                        return ((Indexed)o1).getIndex() - ((Indexed)o2).getIndex();
-                    else return -1;
-                }
-                else if(o2 instanceof Indexed) return 1;
+                int i1 = (o1 instanceof Indexed ? ((Indexed)o1).getIndex() : -1);
+                int i2 = (o2 instanceof Indexed ? ((Indexed)o2).getIndex() : -1);
+                if      (i1 != -1) return (i2 != -1 ? i1 - i2 : -1);
+                else if (i2 != -1) return 1;
                 else return 0;
             }
         });
