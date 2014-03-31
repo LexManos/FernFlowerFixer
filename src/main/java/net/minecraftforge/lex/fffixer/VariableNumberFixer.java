@@ -18,6 +18,24 @@ import org.objectweb.asm.tree.VarInsnNode;
  * Simple solution is to hijack the Iterator to make it use a properly sorted one.
  * Thanks to fry for finding this issue with class names, which then led me to look for var names.
  * 
+ *
+ * Code injected in aa:
+ *   implements net.minecraftfroge.lex.fffixer.Util.Indexed
+ *   public final int getIndex()
+ *   {
+ *       return this.c;
+ *   }
+ *
+ * Code injected in aC:
+ *   implements net.minecraftfroge.lex.fffixer.Util.Indexed
+ *   public final int getIndex()
+ *   {
+ *       return (this.d instanceof Indexed)?((Indexed)this.d).getIndex():-1;
+ *   }
+ *
+ * Code injected in bB:
+ *   var = net.minecraftfroge.lex.fffixer.Util.sortIndexed(var)
+ *
  * Code Injected in d:
  *   var = net.minecraftfroge.lex.fffixer.Util.sortComparable(var);
  * 
@@ -45,8 +63,88 @@ public class VariableNumberFixer implements IClassProcessor
     @Override
     public void process(ClassNode node)
     {
+        if (node.name.equals("aa")) fix_aa(node);
+        if (node.name.equals("aC")) fix_aC(node);
+        if (node.name.equals("bB")) fix_bB(node);
         if (node.name.equals("d" )) fix_d (node);
         if (node.name.equals("de")) fixIntPair(node);
+    }
+
+    private void fix_aa(ClassNode node)
+    {
+        FFFixerImpl.log.info("Adding index getter to aa");
+        node.interfaces.add(Type.getInternalName(Util.Indexed.class));
+
+        MethodNode mn = new MethodNode(ACC_PUBLIC | ACC_FINAL, "getIndex", "()I", null, null);
+        mn.visitCode();
+        mn.visitVarInsn(ALOAD, 0);
+        mn.visitFieldInsn(GETFIELD, "aa", "c", "I");
+        mn.visitInsn(IRETURN);
+        mn.visitEnd();
+        node.methods.add(mn);
+
+        inst.setWorkDone();
+    }
+
+    private void fix_aC(ClassNode node)
+    {
+        FFFixerImpl.log.info("Adding index getter to aC");
+        node.interfaces.add(Type.getInternalName(Util.Indexed.class));
+
+        String idx = Type.getInternalName(Util.Indexed.class);
+        MethodNode mn = new MethodNode(ACC_PUBLIC | ACC_FINAL, "getIndex", "()I", null, null);
+        mn.visitCode();
+        mn.visitVarInsn(ALOAD, 0);
+        mn.visitFieldInsn(GETFIELD, "aC", "d", "LaJ;");
+        mn.visitTypeInsn(INSTANCEOF, idx);
+        Label l0 = new Label();
+        mn.visitJumpInsn(IFEQ, l0);
+        mn.visitVarInsn(ALOAD, 0);
+        mn.visitFieldInsn(GETFIELD, "aC", "d", "LaJ;");
+        mn.visitTypeInsn(CHECKCAST, idx);
+        mn.visitMethodInsn(INVOKEINTERFACE, idx, "getIndex", "()I", true);
+        Label l1 = new Label();
+        mn.visitJumpInsn(GOTO, l1);
+        mn.visitLabel(l0);
+        mn.visitInsn(ICONST_M1);
+        mn.visitLabel(l1);
+        mn.visitInsn(IRETURN);
+        mn.visitEnd();
+        node.methods.add(mn);
+
+        inst.setWorkDone();
+    }
+
+    private void fix_bB(ClassNode node)
+    {
+        MethodNode mtd = FFFixerImpl.getMethod(node, "a", "(Ljava/util/List;I)Ljava/lang/String;");
+
+        Iterator<AbstractInsnNode> itr = mtd.instructions.iterator();
+        while(itr.hasNext())
+        {
+            AbstractInsnNode insn = itr.next();
+            if (insn instanceof MethodInsnNode)
+            {
+                MethodInsnNode v = (MethodInsnNode)insn;
+                // first iterator call
+                if(
+                    v.getOpcode() == INVOKEINTERFACE &&
+                    v.owner.equals("java/util/List") &&
+                    v.name.equals("iterator"))
+                {
+                    FFFixerImpl.log.info("Injecting Var Order Fix in bB");
+                    mtd.instructions.insert(insn, new MethodInsnNode(
+                        INVOKESTATIC,
+                        Type.getInternalName(Util.class),
+                        "sortIndexed",
+                        "(Ljava/util/Iterator;)Ljava/util/Iterator;",
+                        false));
+
+                    inst.setWorkDone();
+                    return;
+                }
+            }
+        }
     }
 
     private void fix_d(ClassNode node)
