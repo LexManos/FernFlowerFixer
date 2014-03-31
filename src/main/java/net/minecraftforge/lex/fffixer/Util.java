@@ -17,21 +17,37 @@ public class Util
     public static Iterator sortIndexed(Iterator itr)
     {
         List list = new ArrayList();
+        List<Indexed> def_dec = new ArrayList<Indexed>();
+        int first = -1;
 
         while(itr.hasNext())
-            list.add(itr.next());
-
-        Collections.sort(list, new Comparator() {
-            @Override
-            public int compare(Object o1, Object o2)
+        {
+            Object i = itr.next();
+            //Split off any default variable declarations and sort them.
+            if (i instanceof Indexed && ((Indexed)i).getIndex() >= 0)
             {
-                int i1 = (o1 instanceof Indexed ? ((Indexed)o1).getIndex() : -1);
-                int i2 = (o2 instanceof Indexed ? ((Indexed)o2).getIndex() : -1);
-                if      (i1 != -1) return (i2 != -1 ? i1 - i2 : -1);
-                else if (i2 != -1) return 1;
-                else return 0;
+                if (first == -1) first = list.size();
+                def_dec.add((Indexed)i);
             }
-        });
+            else
+            {
+                list.add(i);
+            }
+        }
+
+        if (def_dec.size() > 0)
+        {
+            Collections.sort(def_dec, new Comparator<Indexed>()
+            {
+                @Override
+                public int compare(Indexed o1, Indexed o2)
+                {
+                    return o1.getIndex() - o2.getIndex();
+                }
+            });
+            list.addAll(first, def_dec);
+        }
+
         return list.iterator();
     }
 

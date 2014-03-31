@@ -23,14 +23,8 @@ import org.objectweb.asm.tree.VarInsnNode;
  *   implements net.minecraftfroge.lex.fffixer.Util.Indexed
  *   public final int getIndex()
  *   {
+ *       if (!isDeclaration) return -1;
  *       return this.c;
- *   }
- *
- * Code injected in aC:
- *   implements net.minecraftfroge.lex.fffixer.Util.Indexed
- *   public final int getIndex()
- *   {
- *       return (this.d instanceof Indexed)?((Indexed)this.d).getIndex():-1;
  *   }
  *
  * Code injected in bB:
@@ -64,7 +58,7 @@ public class VariableNumberFixer implements IClassProcessor
     public void process(ClassNode node)
     {
         if (node.name.equals("aa")) fix_aa(node);
-        if (node.name.equals("aC")) fix_aC(node);
+        //if (node.name.equals("aC")) fix_aC(node);
         if (node.name.equals("bB")) fix_bB(node);
         if (node.name.equals("d" )) fix_d (node);
         if (node.name.equals("de")) fixIntPair(node);
@@ -77,6 +71,13 @@ public class VariableNumberFixer implements IClassProcessor
 
         MethodNode mn = new MethodNode(ACC_PUBLIC | ACC_FINAL, "getIndex", "()I", null, null);
         mn.visitCode();
+        Label isDeclaration = new Label();
+        mn.visitVarInsn(ALOAD, 0);
+        mn.visitFieldInsn(GETFIELD, "aa", "e", "Z");
+        mn.visitJumpInsn(IFNE, isDeclaration);
+        mn.visitInsn(ICONST_M1);
+        mn.visitInsn(IRETURN);
+        mn.visitLabel(isDeclaration);
         mn.visitVarInsn(ALOAD, 0);
         mn.visitFieldInsn(GETFIELD, "aa", "c", "I");
         mn.visitInsn(IRETURN);
@@ -86,6 +87,7 @@ public class VariableNumberFixer implements IClassProcessor
         inst.setWorkDone();
     }
 
+    /* Old Code, Kept in case we wanna inject it again
     private void fix_aC(ClassNode node)
     {
         FFFixerImpl.log.info("Adding index getter to aC");
@@ -98,22 +100,23 @@ public class VariableNumberFixer implements IClassProcessor
         mn.visitFieldInsn(GETFIELD, "aC", "d", "LaJ;");
         mn.visitTypeInsn(INSTANCEOF, idx);
         Label l0 = new Label();
-        mn.visitJumpInsn(IFEQ, l0);
+        mn.visitJumpInsn(IFNE, l0);
+        mn.visitInsn(ICONST_M1);
+        mn.visitInsn(IRETURN);
+        mn.visitLabel(l0);
         mn.visitVarInsn(ALOAD, 0);
         mn.visitFieldInsn(GETFIELD, "aC", "d", "LaJ;");
         mn.visitTypeInsn(CHECKCAST, idx);
         mn.visitMethodInsn(INVOKEINTERFACE, idx, "getIndex", "()I", true);
-        Label l1 = new Label();
-        mn.visitJumpInsn(GOTO, l1);
-        mn.visitLabel(l0);
         mn.visitInsn(ICONST_M1);
-        mn.visitLabel(l1);
+        mn.visitInsn(IMUL);
         mn.visitInsn(IRETURN);
         mn.visitEnd();
         node.methods.add(mn);
 
         inst.setWorkDone();
     }
+    */
 
     private void fix_bB(ClassNode node)
     {
@@ -127,10 +130,7 @@ public class VariableNumberFixer implements IClassProcessor
             {
                 MethodInsnNode v = (MethodInsnNode)insn;
                 // first iterator call
-                if(
-                    v.getOpcode() == INVOKEINTERFACE &&
-                    v.owner.equals("java/util/List") &&
-                    v.name.equals("iterator"))
+                if(v.getOpcode() == INVOKEINTERFACE && (v.owner + "/" + v.name + v.desc).equals("java/util/List/iterator()Ljava/util/Iterator;"))
                 {
                     FFFixerImpl.log.info("Injecting Var Order Fix in bB");
                     mtd.instructions.insert(insn, new MethodInsnNode(
